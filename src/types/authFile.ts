@@ -6,11 +6,13 @@
 export type AuthFileType =
   | 'qwen'
   | 'kimi'
+  | 'kiro'
   | 'gemini'
   | 'gemini-cli'
   | 'aistudio'
   | 'claude'
   | 'codex'
+  | 'github-copilot'
   | 'antigravity'
   | 'iflow'
   | 'vertex'

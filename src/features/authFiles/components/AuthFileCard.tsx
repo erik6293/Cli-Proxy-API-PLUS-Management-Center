@@ -100,10 +100,14 @@ export function AuthFileCard(props: AuthFileCardProps) {
         ? styles.claudeCard
         : quotaType === 'codex'
           ? styles.codexCard
-          : quotaType === 'gemini-cli'
-            ? styles.geminiCliCard
-            : quotaType === 'kimi'
-              ? styles.kimiCard
+      : quotaType === 'gemini-cli'
+        ? styles.geminiCliCard
+        : quotaType === 'kimi'
+          ? styles.kimiCard
+          : quotaType === 'kiro'
+            ? styles.kiroCard
+            : quotaType === 'github-copilot'
+              ? styles.copilotCard
               : '';
 
   const rawAuthIndex = file['auth_index'] ?? file.authIndex;
