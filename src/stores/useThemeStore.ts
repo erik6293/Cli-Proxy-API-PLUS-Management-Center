@@ -9,6 +9,7 @@ import type { Theme } from '@/types';
 import { STORAGE_KEY_THEME } from '@/utils/constants';
 
 type ResolvedTheme = 'light' | 'dark';
+type AppliedTheme = ResolvedTheme | 'white';
 
 interface ThemeState {
   theme: Theme;
@@ -25,12 +26,36 @@ const getSystemTheme = (): ResolvedTheme => {
   return 'light';
 };
 
-const applyTheme = (resolved: ResolvedTheme) => {
+const resolveAutoTheme = (): AppliedTheme => {
+  return getSystemTheme() === 'dark' ? 'dark' : 'white';
+};
+
+const normalizeResolvedTheme = (theme: AppliedTheme): ResolvedTheme => {
+  return theme === 'dark' ? 'dark' : 'light';
+};
+
+const resolveTheme = (theme: Theme): AppliedTheme => {
+  if (theme === 'auto') {
+    return resolveAutoTheme();
+  }
+  if (theme === 'white') {
+    return 'white';
+  }
+  return theme;
+};
+
+const applyTheme = (resolved: AppliedTheme) => {
   if (resolved === 'dark') {
     document.documentElement.setAttribute('data-theme', 'dark');
-  } else {
-    document.documentElement.removeAttribute('data-theme');
+    return;
   }
+
+  if (resolved === 'white') {
+    document.documentElement.setAttribute('data-theme', 'white');
+    return;
+  }
+
+  document.documentElement.removeAttribute('data-theme');
 };
 
 export const useThemeStore = create<ThemeState>()(
@@ -40,14 +65,17 @@ export const useThemeStore = create<ThemeState>()(
       resolvedTheme: 'light',
 
       setTheme: (theme) => {
-        const resolved: ResolvedTheme = theme === 'auto' ? getSystemTheme() : theme;
+        const resolved = resolveTheme(theme);
         applyTheme(resolved);
-        set({ theme, resolvedTheme: resolved });
+        set({
+          theme,
+          resolvedTheme: normalizeResolvedTheme(resolved),
+        });
       },
 
       cycleTheme: () => {
         const { theme, setTheme } = get();
-        const order: Theme[] = ['light', 'dark', 'auto'];
+        const order: Theme[] = ['light', 'white', 'dark', 'auto'];
         const currentIndex = order.indexOf(theme);
         const nextTheme = order[(currentIndex + 1) % order.length];
         setTheme(nextTheme);
@@ -68,9 +96,9 @@ export const useThemeStore = create<ThemeState>()(
         const listener = () => {
           const { theme: currentTheme } = get();
           if (currentTheme === 'auto') {
-            const resolved = getSystemTheme();
+            const resolved = resolveAutoTheme();
             applyTheme(resolved);
-            set({ resolvedTheme: resolved });
+            set({ resolvedTheme: normalizeResolvedTheme(resolved) });
           }
         };
 

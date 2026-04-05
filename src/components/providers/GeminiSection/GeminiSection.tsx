@@ -10,8 +10,11 @@ import {
   buildCandidateUsageSourceIds,
   calculateStatusBarData,
   type KeyStats,
-  type UsageDetail,
 } from '@/utils/usage';
+import {
+  collectUsageDetailsForCandidates,
+  type UsageDetailsBySource,
+} from '@/utils/usageIndex';
 import styles from '@/pages/AiProvidersPage.module.scss';
 import { ProviderList } from '../ProviderList';
 import { ProviderStatusBar } from '../ProviderStatusBar';
@@ -20,7 +23,7 @@ import { getStatsBySource, hasDisableAllModelsRule } from '../utils';
 interface GeminiSectionProps {
   configs: GeminiKeyConfig[];
   keyStats: KeyStats;
-  usageDetails: UsageDetail[];
+  usageDetailsBySource: UsageDetailsBySource;
   loading: boolean;
   disableControls: boolean;
   isSwitching: boolean;
@@ -33,7 +36,7 @@ interface GeminiSectionProps {
 export function GeminiSection({
   configs,
   keyStats,
-  usageDetails,
+  usageDetailsBySource,
   loading,
   disableControls,
   isSwitching,
@@ -56,13 +59,14 @@ export function GeminiSection({
         prefix: config.prefix,
       });
       if (!candidates.length) return;
-      const candidateSet = new Set(candidates);
-      const filteredDetails = usageDetails.filter((detail) => candidateSet.has(detail.source));
-      cache.set(config.apiKey, calculateStatusBarData(filteredDetails));
+      cache.set(
+        config.apiKey,
+        calculateStatusBarData(collectUsageDetailsForCandidates(usageDetailsBySource, candidates))
+      );
     });
 
     return cache;
-  }, [configs, usageDetails]);
+  }, [configs, usageDetailsBySource]);
 
   return (
     <>
@@ -113,6 +117,12 @@ export function GeminiSection({
                   <span className={styles.fieldLabel}>{t('common.api_key')}:</span>
                   <span className={styles.fieldValue}>{maskApiKey(item.apiKey)}</span>
                 </div>
+                {item.priority !== undefined && (
+                  <div className={styles.fieldRow}>
+                    <span className={styles.fieldLabel}>{t('common.priority')}:</span>
+                    <span className={styles.fieldValue}>{item.priority}</span>
+                  </div>
+                )}
                 {item.prefix && (
                   <div className={styles.fieldRow}>
                     <span className={styles.fieldLabel}>{t('common.prefix')}:</span>
@@ -123,6 +133,12 @@ export function GeminiSection({
                   <div className={styles.fieldRow}>
                     <span className={styles.fieldLabel}>{t('common.base_url')}:</span>
                     <span className={styles.fieldValue}>{item.baseUrl}</span>
+                  </div>
+                )}
+                {item.proxyUrl && (
+                  <div className={styles.fieldRow}>
+                    <span className={styles.fieldLabel}>{t('common.proxy_url')}:</span>
+                    <span className={styles.fieldValue}>{item.proxyUrl}</span>
                   </div>
                 )}
                 {headerEntries.length > 0 && (
@@ -139,6 +155,21 @@ export function GeminiSection({
                     {t('ai_providers.config_disabled_badge')}
                   </div>
                 )}
+                {item.models?.length ? (
+                  <div className={styles.modelTagList}>
+                    <span className={styles.modelCountLabel}>
+                      {t('ai_providers.gemini_models_count')}: {item.models.length}
+                    </span>
+                    {item.models.map((model) => (
+                      <span key={model.name} className={styles.modelTag}>
+                        <span className={styles.modelName}>{model.name}</span>
+                        {model.alias && model.alias !== model.name && (
+                          <span className={styles.modelAlias}>{model.alias}</span>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
                 {excludedModels.length ? (
                   <div className={styles.excludedModelsSection}>
                     <div className={styles.excludedModelsLabel}>

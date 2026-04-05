@@ -61,8 +61,11 @@ interface QuotaCardProps<TState extends QuotaStatusState> {
   quota?: TState;
   resolvedTheme: ResolvedTheme;
   i18nPrefix: string;
+  cardIdleMessageKey?: string;
   cardClassName: string;
   defaultType: string;
+  canRefresh?: boolean;
+  onRefresh?: () => void;
   renderQuotaItems: (quota: TState, t: TFunction, helpers: QuotaRenderHelpers) => ReactNode;
 }
 
@@ -71,8 +74,11 @@ export function QuotaCard<TState extends QuotaStatusState>({
   quota,
   resolvedTheme,
   i18nPrefix,
+  cardIdleMessageKey,
   cardClassName,
   defaultType,
+  canRefresh = false,
+  onRefresh,
   renderQuotaItems
 }: QuotaCardProps<TState>) {
   const { t } = useTranslation();
@@ -88,12 +94,15 @@ export function QuotaCard<TState extends QuotaStatusState>({
     quota?.errorStatus,
     quota?.error || t('common.unknown_error')
   );
+  const idleMessageKey = onRefresh ? `${i18nPrefix}.idle` : (cardIdleMessageKey ?? `${i18nPrefix}.idle`);
 
   const getTypeLabel = (type: string): string => {
     const key = `auth_files.filter_${type}`;
     const translated = t(key);
     if (translated !== key) return translated;
-    if (type.toLowerCase() === 'iflow') return 'iFlow';
+    const normalized = type.toLowerCase();
+    if (normalized === 'iflow') return 'iFlow';
+    if (normalized === 'github-copilot') return 'GitHub Copilot';
     return type.charAt(0).toUpperCase() + type.slice(1);
   };
 
@@ -117,7 +126,18 @@ export function QuotaCard<TState extends QuotaStatusState>({
         {quotaStatus === 'loading' ? (
           <div className={styles.quotaMessage}>{t(`${i18nPrefix}.loading`)}</div>
         ) : quotaStatus === 'idle' ? (
-          <div className={styles.quotaMessage}>{t(`${i18nPrefix}.idle`)}</div>
+          onRefresh ? (
+            <button
+              type="button"
+              className={`${styles.quotaMessage} ${styles.quotaMessageAction}`}
+              onClick={onRefresh}
+              disabled={!canRefresh}
+            >
+              {t(idleMessageKey)}
+            </button>
+          ) : (
+            <div className={styles.quotaMessage}>{t(idleMessageKey)}</div>
+          )
         ) : quotaStatus === 'error' ? (
           <div className={styles.quotaError}>
             {t(`${i18nPrefix}.load_failed`, {
@@ -127,7 +147,7 @@ export function QuotaCard<TState extends QuotaStatusState>({
         ) : quota ? (
           renderQuotaItems(quota, t, { styles, QuotaProgressBar })
         ) : (
-          <div className={styles.quotaMessage}>{t(`${i18nPrefix}.idle`)}</div>
+          <div className={styles.quotaMessage}>{t(idleMessageKey)}</div>
         )}
       </div>
     </div>

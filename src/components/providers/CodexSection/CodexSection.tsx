@@ -3,16 +3,18 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
-import iconCodexLight from '@/assets/icons/codex_light.svg';
-import iconCodexDark from '@/assets/icons/codex_drak.svg';
+import iconCodex from '@/assets/icons/codex.svg';
 import type { ProviderKeyConfig } from '@/types';
 import { maskApiKey } from '@/utils/format';
 import {
   buildCandidateUsageSourceIds,
   calculateStatusBarData,
   type KeyStats,
-  type UsageDetail,
 } from '@/utils/usage';
+import {
+  collectUsageDetailsForCandidates,
+  type UsageDetailsBySource,
+} from '@/utils/usageIndex';
 import styles from '@/pages/AiProvidersPage.module.scss';
 import { ProviderList } from '../ProviderList';
 import { ProviderStatusBar } from '../ProviderStatusBar';
@@ -21,11 +23,10 @@ import { getStatsBySource, hasDisableAllModelsRule } from '../utils';
 interface CodexSectionProps {
   configs: ProviderKeyConfig[];
   keyStats: KeyStats;
-  usageDetails: UsageDetail[];
+  usageDetailsBySource: UsageDetailsBySource;
   loading: boolean;
   disableControls: boolean;
   isSwitching: boolean;
-  resolvedTheme: string;
   onAdd: () => void;
   onEdit: (index: number) => void;
   onDelete: (index: number) => void;
@@ -35,11 +36,10 @@ interface CodexSectionProps {
 export function CodexSection({
   configs,
   keyStats,
-  usageDetails,
+  usageDetailsBySource,
   loading,
   disableControls,
   isSwitching,
-  resolvedTheme,
   onAdd,
   onEdit,
   onDelete,
@@ -59,24 +59,21 @@ export function CodexSection({
         prefix: config.prefix,
       });
       if (!candidates.length) return;
-      const candidateSet = new Set(candidates);
-      const filteredDetails = usageDetails.filter((detail) => candidateSet.has(detail.source));
-      cache.set(config.apiKey, calculateStatusBarData(filteredDetails));
+      cache.set(
+        config.apiKey,
+        calculateStatusBarData(collectUsageDetailsForCandidates(usageDetailsBySource, candidates))
+      );
     });
 
     return cache;
-  }, [configs, usageDetails]);
+  }, [configs, usageDetailsBySource]);
 
   return (
     <>
       <Card
         title={
           <span className={styles.cardTitle}>
-            <img
-              src={resolvedTheme === 'dark' ? iconCodexDark : iconCodexLight}
-              alt=""
-              className={styles.cardTitleIcon}
-            />
+            <img src={iconCodex} alt="" className={styles.cardTitleIcon} />
             {t('ai_providers.codex_title')}
           </span>
         }
@@ -118,6 +115,12 @@ export function CodexSection({
                   <span className={styles.fieldLabel}>{t('common.api_key')}:</span>
                   <span className={styles.fieldValue}>{maskApiKey(item.apiKey)}</span>
                 </div>
+                {item.priority !== undefined && (
+                  <div className={styles.fieldRow}>
+                    <span className={styles.fieldLabel}>{t('common.priority')}:</span>
+                    <span className={styles.fieldValue}>{item.priority}</span>
+                  </div>
+                )}
                 {item.prefix && (
                   <div className={styles.fieldRow}>
                     <span className={styles.fieldLabel}>{t('common.prefix')}:</span>
@@ -136,6 +139,12 @@ export function CodexSection({
                     <span className={styles.fieldValue}>{item.proxyUrl}</span>
                   </div>
                 )}
+                {item.websockets !== undefined && (
+                  <div className={styles.fieldRow}>
+                    <span className={styles.fieldLabel}>{t('ai_providers.codex_websockets_label')}:</span>
+                    <span className={styles.fieldValue}>{item.websockets ? t('common.yes') : t('common.no')}</span>
+                  </div>
+                )}
                 {headerEntries.length > 0 && (
                   <div className={styles.headerBadgeList}>
                     {headerEntries.map(([key, value]) => (
@@ -150,6 +159,21 @@ export function CodexSection({
                     {t('ai_providers.config_disabled_badge')}
                   </div>
                 )}
+                {item.models?.length ? (
+                  <div className={styles.modelTagList}>
+                    <span className={styles.modelCountLabel}>
+                      {t('ai_providers.codex_models_count')}: {item.models.length}
+                    </span>
+                    {item.models.map((model) => (
+                      <span key={model.name} className={styles.modelTag}>
+                        <span className={styles.modelName}>{model.name}</span>
+                        {model.alias && model.alias !== model.name && (
+                          <span className={styles.modelAlias}>{model.alias}</span>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
                 {excludedModels.length ? (
                   <div className={styles.excludedModelsSection}>
                     <div className={styles.excludedModelsLabel}>

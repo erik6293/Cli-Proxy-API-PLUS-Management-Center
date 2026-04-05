@@ -14,12 +14,33 @@ export function isAntigravityFile(file: AuthFileItem): boolean {
   return resolveAuthProvider(file) === 'antigravity';
 }
 
+export function isClaudeFile(file: AuthFileItem): boolean {
+  return resolveAuthProvider(file) === 'claude';
+}
+
+export function isClaudeOAuthFile(file: AuthFileItem): boolean {
+  if (!isClaudeFile(file)) return false;
+  const metadata =
+    file && typeof file.metadata === 'object' && file.metadata !== null
+      ? (file.metadata as Record<string, unknown>)
+      : null;
+  const accessToken =
+    metadata && typeof metadata.access_token === 'string'
+      ? metadata.access_token.trim()
+      : '';
+  return accessToken.includes('sk-ant-oat');
+}
+
 export function isCodexFile(file: AuthFileItem): boolean {
   return resolveAuthProvider(file) === 'codex';
 }
 
 export function isGeminiCliFile(file: AuthFileItem): boolean {
   return resolveAuthProvider(file) === 'gemini-cli';
+}
+
+export function isKimiFile(file: AuthFileItem): boolean {
+  return resolveAuthProvider(file) === 'kimi';
 }
 
 export function isRuntimeOnlyAuthFile(file: AuthFileItem): boolean {

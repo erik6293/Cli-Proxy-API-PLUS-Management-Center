@@ -10,11 +10,13 @@ import { authFilesApi, configFileApi } from '@/services/api';
 import {
   QuotaSection,
   ANTIGRAVITY_CONFIG,
+  CLAUDE_CONFIG,
   CODEX_CONFIG,
-  GEMINI_CLI_CONFIG
+  GEMINI_CLI_CONFIG,
+  KIMI_CONFIG,
+  KIRO_CONFIG,
+  COPILOT_CONFIG,
 } from '@/components/quota';
-// Fork 增强: Kiro 和 Copilot 配额支持
-import { KIRO_CONFIG, COPILOT_CONFIG } from '@/components/quota';
 import type { AuthFileItem } from '@/types';
 import styles from './QuotaPage.module.scss';
 
@@ -72,6 +74,12 @@ export function QuotaPage() {
       {error && <div className={styles.errorBox}>{error}</div>}
 
       <QuotaSection
+        config={CLAUDE_CONFIG}
+        files={files}
+        loading={loading}
+        disabled={disableControls}
+      />
+      <QuotaSection
         config={ANTIGRAVITY_CONFIG}
         files={files}
         loading={loading}
@@ -89,7 +97,12 @@ export function QuotaPage() {
         loading={loading}
         disabled={disableControls}
       />
-      {/* Fork 增强: Kiro 和 Copilot 配额显示 */}
+      <QuotaSection
+        config={KIMI_CONFIG}
+        files={files}
+        loading={loading}
+        disabled={disableControls}
+      />
       <QuotaSection
         config={KIRO_CONFIG}
         files={files}

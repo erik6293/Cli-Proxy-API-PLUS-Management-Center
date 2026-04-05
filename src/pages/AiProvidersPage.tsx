@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -15,9 +15,12 @@ import {
   withDisableAllModelsRule,
   withoutDisableAllModelsRule,
 } from '@/components/providers/utils';
+import { usePageTransitionLayer } from '@/components/common/PageTransitionLayer';
+import { useHeaderRefresh } from '@/hooks/useHeaderRefresh';
 import { ampcodeApi, providersApi } from '@/services/api';
 import { useAuthStore, useConfigStore, useNotificationStore, useThemeStore } from '@/stores';
 import type { GeminiKeyConfig, OpenAIProviderConfig, ProviderKeyConfig } from '@/types';
+import { indexUsageDetailsBySource } from '@/utils/usageIndex';
 import styles from './AiProvidersPage.module.scss';
 
 export function AiProvidersPage() {
@@ -58,7 +61,16 @@ export function AiProvidersPage() {
   const disableControls = connectionStatus !== 'connected';
   const isSwitching = Boolean(configSwitchingKey);
 
-  const { keyStats, usageDetails, loadKeyStats } = useProviderStats();
+  const pageTransitionLayer = usePageTransitionLayer();
+  const isCurrentLayer = pageTransitionLayer ? pageTransitionLayer.status === 'current' : true;
+
+  const { keyStats, usageDetails, loadKeyStats, refreshKeyStats } = useProviderStats({
+    enabled: isCurrentLayer,
+  });
+  const usageDetailsBySource = useMemo(
+    () => indexUsageDetailsBySource(usageDetails),
+    [usageDetails]
+  );
 
   const getErrorMessage = (err: unknown) => {
     if (err instanceof Error) return err.message;
@@ -112,8 +124,12 @@ export function AiProvidersPage() {
     if (hasMounted.current) return;
     hasMounted.current = true;
     loadConfigs();
-    loadKeyStats();
-  }, [loadConfigs, loadKeyStats]);
+  }, [loadConfigs]);
+
+  useEffect(() => {
+    if (!isCurrentLayer) return;
+    void loadKeyStats().catch(() => {});
+  }, [isCurrentLayer, loadKeyStats]);
 
   useEffect(() => {
     if (config?.geminiApiKeys) setGeminiKeys(config.geminiApiKeys);
@@ -128,6 +144,8 @@ export function AiProvidersPage() {
     config?.vertexApiKeys,
     config?.openaiCompatibility,
   ]);
+
+  useHeaderRefresh(refreshKeyStats, isCurrentLayer);
 
   const openEditor = useCallback(
     (path: string) => {
@@ -161,7 +179,7 @@ export function AiProvidersPage() {
   };
 
   const setConfigEnabled = async (
-    provider: 'gemini' | 'codex' | 'claude',
+    provider: 'gemini' | 'codex' | 'claude' | 'vertex',
     index: number,
     enabled: boolean
   ) => {
@@ -201,7 +219,12 @@ export function AiProvidersPage() {
       return;
     }
 
-    const source = provider === 'codex' ? codexConfigs : claudeConfigs;
+    const source =
+      provider === 'codex'
+        ? codexConfigs
+        : provider === 'claude'
+          ? claudeConfigs
+          : vertexConfigs;
     const current = source[index];
     if (!current) return;
 
@@ -219,17 +242,23 @@ export function AiProvidersPage() {
       setCodexConfigs(nextList);
       updateConfigValue('codex-api-key', nextList);
       clearCache('codex-api-key');
-    } else {
+    } else if (provider === 'claude') {
       setClaudeConfigs(nextList);
       updateConfigValue('claude-api-key', nextList);
       clearCache('claude-api-key');
+    } else {
+      setVertexConfigs(nextList);
+      updateConfigValue('vertex-api-key', nextList);
+      clearCache('vertex-api-key');
     }
 
     try {
       if (provider === 'codex') {
         await providersApi.saveCodexConfigs(nextList);
-      } else {
+      } else if (provider === 'claude') {
         await providersApi.saveClaudeConfigs(nextList);
+      } else {
+        await providersApi.saveVertexConfigs(nextList);
       }
       showNotification(
         enabled ? t('notification.config_enabled') : t('notification.config_disabled'),
@@ -241,10 +270,14 @@ export function AiProvidersPage() {
         setCodexConfigs(previousList);
         updateConfigValue('codex-api-key', previousList);
         clearCache('codex-api-key');
-      } else {
+      } else if (provider === 'claude') {
         setClaudeConfigs(previousList);
         updateConfigValue('claude-api-key', previousList);
         clearCache('claude-api-key');
+      } else {
+        setVertexConfigs(previousList);
+        updateConfigValue('vertex-api-key', previousList);
+        clearCache('vertex-api-key');
       }
       showNotification(`${t('notification.update_failed')}: ${message}`, 'error');
     } finally {
@@ -344,7 +377,7 @@ export function AiProvidersPage() {
           <GeminiSection
             configs={geminiKeys}
             keyStats={keyStats}
-            usageDetails={usageDetails}
+            usageDetailsBySource={usageDetailsBySource}
             loading={loading}
             disableControls={disableControls}
             isSwitching={isSwitching}
@@ -359,11 +392,10 @@ export function AiProvidersPage() {
           <CodexSection
             configs={codexConfigs}
             keyStats={keyStats}
-            usageDetails={usageDetails}
+            usageDetailsBySource={usageDetailsBySource}
             loading={loading}
             disableControls={disableControls}
             isSwitching={isSwitching}
-            resolvedTheme={resolvedTheme}
             onAdd={() => openEditor('/ai-providers/codex/new')}
             onEdit={(index) => openEditor(`/ai-providers/codex/${index}`)}
             onDelete={(index) => void deleteProviderEntry('codex', index)}
@@ -375,7 +407,7 @@ export function AiProvidersPage() {
           <ClaudeSection
             configs={claudeConfigs}
             keyStats={keyStats}
-            usageDetails={usageDetails}
+            usageDetailsBySource={usageDetailsBySource}
             loading={loading}
             disableControls={disableControls}
             isSwitching={isSwitching}
@@ -390,13 +422,14 @@ export function AiProvidersPage() {
           <VertexSection
             configs={vertexConfigs}
             keyStats={keyStats}
-            usageDetails={usageDetails}
+            usageDetailsBySource={usageDetailsBySource}
             loading={loading}
             disableControls={disableControls}
             isSwitching={isSwitching}
             onAdd={() => openEditor('/ai-providers/vertex/new')}
             onEdit={(index) => openEditor(`/ai-providers/vertex/${index}`)}
             onDelete={deleteVertex}
+            onToggle={(index, enabled) => void setConfigEnabled('vertex', index, enabled)}
           />
         </div>
 
@@ -414,7 +447,7 @@ export function AiProvidersPage() {
           <OpenAISection
             configs={openaiProviders}
             keyStats={keyStats}
-            usageDetails={usageDetails}
+            usageDetailsBySource={usageDetailsBySource}
             loading={loading}
             disableControls={disableControls}
             isSwitching={isSwitching}

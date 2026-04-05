@@ -1,6 +1,6 @@
-import type { AmpcodeConfig, AmpcodeModelMapping, ApiKeyEntry } from '@/types';
+import type { AmpcodeConfig, AmpcodeModelMapping, AmpcodeUpstreamApiKeyMapping, ApiKeyEntry } from '@/types';
 import { buildCandidateUsageSourceIds, type KeyStatBucket, type KeyStats } from '@/utils/usage';
-import type { AmpcodeFormState, ModelEntry } from './types';
+import type { AmpcodeFormState, AmpcodeUpstreamApiKeyEntry, ModelEntry } from './types';
 
 export const DISABLE_ALL_MODELS_RULE = '*';
 
@@ -23,11 +23,13 @@ export const withoutDisableAllModelsRule = (models?: string[]) => {
   return base;
 };
 
-export const parseExcludedModels = (text: string): string[] =>
+export const parseTextList = (text: string): string[] =>
   text
     .split(/[\n,]+/)
     .map((item) => item.trim())
     .filter(Boolean);
+
+export const parseExcludedModels = parseTextList;
 
 export const excludedModelsToText = (models?: string[]) =>
   Array.isArray(models) ? models.join('\n') : '';
@@ -35,6 +37,19 @@ export const excludedModelsToText = (models?: string[]) =>
 export const normalizeOpenAIBaseUrl = (baseUrl: string): string => {
   let trimmed = String(baseUrl || '').trim();
   if (!trimmed) return '';
+  trimmed = trimmed.replace(/\/?v0\/management\/?$/i, '');
+  trimmed = trimmed.replace(/\/+$/g, '');
+  if (!/^https?:\/\//i.test(trimmed)) {
+    trimmed = `http://${trimmed}`;
+  }
+  return trimmed;
+};
+
+export const normalizeClaudeBaseUrl = (baseUrl: string): string => {
+  let trimmed = String(baseUrl || '').trim();
+  if (!trimmed) {
+    return 'https://api.anthropic.com';
+  }
   trimmed = trimmed.replace(/\/?v0\/management\/?$/i, '');
   trimmed = trimmed.replace(/\/+$/g, '');
   if (!/^https?:\/\//i.test(trimmed)) {
@@ -56,6 +71,18 @@ export const buildOpenAIChatCompletionsEndpoint = (baseUrl: string): string => {
     return trimmed;
   }
   return `${trimmed}/chat/completions`;
+};
+
+export const buildClaudeMessagesEndpoint = (baseUrl: string): string => {
+  const trimmed = normalizeClaudeBaseUrl(baseUrl);
+  if (!trimmed) return '';
+  if (trimmed.endsWith('/v1/messages')) {
+    return trimmed;
+  }
+  if (trimmed.endsWith('/v1')) {
+    return `${trimmed}/messages`;
+  }
+  return `${trimmed}/v1/messages`;
 };
 
 // 根据 source (apiKey) 获取统计数据 - 与旧版逻辑一致
@@ -141,9 +168,43 @@ export const entriesToAmpcodeMappings = (entries: ModelEntry[]): AmpcodeModelMap
   return mappings;
 };
 
+export const ampcodeUpstreamApiKeysToEntries = (
+  mappings?: AmpcodeUpstreamApiKeyMapping[]
+): AmpcodeUpstreamApiKeyEntry[] => {
+  if (!Array.isArray(mappings) || mappings.length === 0) {
+    return [{ upstreamApiKey: '', clientApiKeysText: '' }];
+  }
+
+  return mappings.map((mapping) => ({
+    upstreamApiKey: mapping.upstreamApiKey ?? '',
+    clientApiKeysText: Array.isArray(mapping.apiKeys) ? mapping.apiKeys.join('\n') : '',
+  }));
+};
+
+export const entriesToAmpcodeUpstreamApiKeys = (
+  entries: AmpcodeUpstreamApiKeyEntry[]
+): AmpcodeUpstreamApiKeyMapping[] => {
+  const seen = new Set<string>();
+  const mappings: AmpcodeUpstreamApiKeyMapping[] = [];
+
+  entries.forEach((entry) => {
+    const upstreamApiKey = String(entry?.upstreamApiKey ?? '').trim();
+    if (!upstreamApiKey || seen.has(upstreamApiKey)) return;
+
+    const apiKeys = Array.from(new Set(parseTextList(String(entry?.clientApiKeysText ?? ''))));
+    if (!apiKeys.length) return;
+
+    seen.add(upstreamApiKey);
+    mappings.push({ upstreamApiKey, apiKeys });
+  });
+
+  return mappings;
+};
+
 export const buildAmpcodeFormState = (ampcode?: AmpcodeConfig | null): AmpcodeFormState => ({
   upstreamUrl: ampcode?.upstreamUrl ?? '',
   upstreamApiKey: '',
   forceModelMappings: ampcode?.forceModelMappings ?? false,
   mappingEntries: ampcodeMappingsToEntries(ampcode?.modelMappings),
+  upstreamApiKeyEntries: ampcodeUpstreamApiKeysToEntries(ampcode?.upstreamApiKeys),
 });

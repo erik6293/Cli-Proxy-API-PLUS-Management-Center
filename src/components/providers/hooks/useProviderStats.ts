@@ -1,37 +1,37 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback } from 'react';
 import { useInterval } from '@/hooks/useInterval';
-import { usageApi } from '@/services/api';
-import { collectUsageDetails, type KeyStats, type UsageDetail } from '@/utils/usage';
+import { USAGE_STATS_STALE_TIME_MS, useUsageStatsStore } from '@/stores';
+import type { KeyStats, UsageDetail } from '@/utils/usage';
 
-const EMPTY_STATS: KeyStats = { bySource: {}, byAuthIndex: {} };
+const EMPTY_KEY_STATS: KeyStats = { bySource: {}, byAuthIndex: {} };
+const EMPTY_USAGE_DETAILS: UsageDetail[] = [];
 
-export const useProviderStats = () => {
-  const [keyStats, setKeyStats] = useState<KeyStats>(EMPTY_STATS);
-  const [usageDetails, setUsageDetails] = useState<UsageDetail[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const loadingRef = useRef(false);
+export type UseProviderStatsOptions = {
+  enabled?: boolean;
+};
 
-  // 加载 key 统计和 usage 明细（API 层已有60秒超时）
+export const useProviderStats = (options: UseProviderStatsOptions = {}) => {
+  const enabled = options.enabled ?? true;
+  const keyStats = useUsageStatsStore((state) => (enabled ? state.keyStats : EMPTY_KEY_STATS));
+  const usageDetails = useUsageStatsStore((state) =>
+    enabled ? state.usageDetails : EMPTY_USAGE_DETAILS
+  );
+  const isLoading = useUsageStatsStore((state) => (enabled ? state.loading : false));
+  const loadUsageStats = useUsageStatsStore((state) => state.loadUsageStats);
+
+  // 首次进入页面优先复用缓存，避免跨页面重复拉取 /usage。
   const loadKeyStats = useCallback(async () => {
-    if (loadingRef.current) return;
-    loadingRef.current = true;
-    setIsLoading(true);
-    try {
-      const usageResponse = await usageApi.getUsage();
-      const usageData = usageResponse?.usage ?? usageResponse;
-      const stats = await usageApi.getKeyStats(usageData);
-      setKeyStats(stats);
-      setUsageDetails(collectUsageDetails(usageData));
-    } catch {
-      // 静默失败
-    } finally {
-      loadingRef.current = false;
-      setIsLoading(false);
-    }
-  }, []);
+    await loadUsageStats({ staleTimeMs: USAGE_STATS_STALE_TIME_MS });
+  }, [loadUsageStats]);
 
-  // 定时刷新状态数据（每240秒）
-  useInterval(loadKeyStats, 240_000);
+  // 定时器触发时强制刷新共享 usage。
+  const refreshKeyStats = useCallback(async () => {
+    await loadUsageStats({ force: true, staleTimeMs: USAGE_STATS_STALE_TIME_MS });
+  }, [loadUsageStats]);
 
-  return { keyStats, usageDetails, loadKeyStats, isLoading };
+  useInterval(() => {
+    void refreshKeyStats().catch(() => {});
+  }, enabled ? 240_000 : null);
+
+  return { keyStats, usageDetails, loadKeyStats, refreshKeyStats, isLoading };
 };

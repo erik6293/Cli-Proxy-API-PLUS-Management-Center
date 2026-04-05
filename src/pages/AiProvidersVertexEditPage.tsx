@@ -8,11 +8,14 @@ import { HeaderInputList } from '@/components/ui/HeaderInputList';
 import { ModelInputList } from '@/components/ui/ModelInputList';
 import { modelsToEntries } from '@/components/ui/modelInputListUtils';
 import { useEdgeSwipeBack } from '@/hooks/useEdgeSwipeBack';
+import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import { SecondaryScreenShell } from '@/components/common/SecondaryScreenShell';
 import { providersApi } from '@/services/api';
 import { useAuthStore, useConfigStore, useNotificationStore } from '@/stores';
 import type { ProviderKeyConfig } from '@/types';
-import { buildHeaderObject, headersToEntries } from '@/utils/headers';
+import { excludedModelsToText, parseExcludedModels } from '@/components/providers/utils';
+import { buildHeaderObject, headersToEntries, normalizeHeaderEntries } from '@/utils/headers';
+import { areKeyValueEntriesEqual, areModelEntriesEqual, areStringArraysEqual } from '@/utils/compare';
 import type { VertexFormState } from '@/components/providers';
 import layoutStyles from './AiProvidersEditLayout.module.scss';
 
@@ -25,7 +28,9 @@ const buildEmptyForm = (): VertexFormState => ({
   proxyUrl: '',
   headers: [],
   models: [],
+  excludedModels: [],
   modelEntries: [{ name: '', alias: '' }],
+  excludedText: '',
 });
 
 const parseIndexParam = (value: string | undefined) => {
@@ -33,6 +38,38 @@ const parseIndexParam = (value: string | undefined) => {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) ? parsed : null;
 };
+
+const normalizeModelEntries = (entries: Array<{ name: string; alias: string }>) =>
+  (entries ?? []).reduce<Array<{ name: string; alias: string }>>((acc, entry) => {
+    const name = String(entry?.name ?? '').trim();
+    const alias = String(entry?.alias ?? '').trim();
+    if (!name && !alias) return acc;
+    acc.push({ name, alias });
+    return acc;
+  }, []);
+
+type VertexFormBaseline = {
+  apiKey: string;
+  priority: number | null;
+  prefix: string;
+  baseUrl: string;
+  proxyUrl: string;
+  headers: ReturnType<typeof normalizeHeaderEntries>;
+  models: ReturnType<typeof normalizeModelEntries>;
+  excludedModels: string[];
+};
+
+const buildVertexBaseline = (form: VertexFormState): VertexFormBaseline => ({
+  apiKey: String(form.apiKey ?? '').trim(),
+  priority:
+    form.priority !== undefined && Number.isFinite(form.priority) ? Math.trunc(form.priority) : null,
+  prefix: String(form.prefix ?? '').trim(),
+  baseUrl: String(form.baseUrl ?? '').trim(),
+  proxyUrl: String(form.proxyUrl ?? '').trim(),
+  headers: normalizeHeaderEntries(form.headers),
+  models: normalizeModelEntries(form.modelEntries),
+  excludedModels: parseExcludedModels(form.excludedText ?? ''),
+});
 
 export function AiProvidersVertexEditPage() {
   const { t } = useTranslation();
@@ -53,6 +90,7 @@ export function AiProvidersVertexEditPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [form, setForm] = useState<VertexFormState>(() => buildEmptyForm());
+  const [baseline, setBaseline] = useState(() => buildVertexBaseline(buildEmptyForm()));
 
   const hasIndexParam = typeof params.index === 'string';
   const editIndex = useMemo(() => parseIndexParam(params.index), [params.index]);
@@ -126,33 +164,88 @@ export function AiProvidersVertexEditPage() {
     if (loading) return;
 
     if (initialData) {
-      setForm({
+      const nextForm: VertexFormState = {
         ...initialData,
         headers: headersToEntries(initialData.headers),
         modelEntries: modelsToEntries(initialData.models),
-      });
+        excludedText: excludedModelsToText(initialData.excludedModels),
+      };
+      setForm(nextForm);
+      setBaseline(buildVertexBaseline(nextForm));
       return;
     }
-    setForm(buildEmptyForm());
+    const nextForm = buildEmptyForm();
+    setForm(nextForm);
+    setBaseline(buildVertexBaseline(nextForm));
   }, [initialData, loading]);
 
   const canSave = !disableControls && !saving && !loading && !invalidIndexParam && !invalidIndex;
+
+  const normalizedHeaders = useMemo(() => normalizeHeaderEntries(form.headers), [form.headers]);
+  const normalizedModels = useMemo(
+    () => normalizeModelEntries(form.modelEntries),
+    [form.modelEntries]
+  );
+  const normalizedExcludedModels = useMemo(
+    () => parseExcludedModels(form.excludedText ?? ''),
+    [form.excludedText]
+  );
+  const normalizedPriority = useMemo(() => {
+    return form.priority !== undefined && Number.isFinite(form.priority)
+      ? Math.trunc(form.priority)
+      : null;
+  }, [form.priority]);
+  const isHeadersDirty = useMemo(
+    () => !areKeyValueEntriesEqual(baseline.headers, normalizedHeaders),
+    [baseline.headers, normalizedHeaders]
+  );
+  const isModelsDirty = useMemo(
+    () => !areModelEntriesEqual(baseline.models, normalizedModels),
+    [baseline.models, normalizedModels]
+  );
+  const isExcludedModelsDirty = useMemo(
+    () => !areStringArraysEqual(baseline.excludedModels, normalizedExcludedModels),
+    [baseline.excludedModels, normalizedExcludedModels]
+  );
+  const isDirty =
+    baseline.apiKey !== form.apiKey.trim() ||
+    baseline.priority !== normalizedPriority ||
+    baseline.prefix !== String(form.prefix ?? '').trim() ||
+    baseline.baseUrl !== String(form.baseUrl ?? '').trim() ||
+    baseline.proxyUrl !== String(form.proxyUrl ?? '').trim() ||
+    isHeadersDirty ||
+    isModelsDirty ||
+    isExcludedModelsDirty;
+  const canGuard = !loading && !saving && !invalidIndexParam && !invalidIndex;
+
+  const { allowNextNavigation } = useUnsavedChangesGuard({
+    enabled: canGuard,
+    shouldBlock: ({ currentLocation, nextLocation }) =>
+      isDirty && currentLocation.pathname !== nextLocation.pathname,
+    dialog: {
+      title: t('common.unsaved_changes_title'),
+      message: t('common.unsaved_changes_message'),
+      confirmText: t('common.leave'),
+      cancelText: t('common.stay'),
+      variant: 'danger',
+    },
+  });
 
   const handleSave = useCallback(async () => {
     if (!canSave) return;
 
     const trimmedBaseUrl = (form.baseUrl ?? '').trim();
     const baseUrl = trimmedBaseUrl || undefined;
-    if (!baseUrl) {
-      showNotification(t('notification.vertex_base_url_required'), 'error');
-      return;
-    }
 
     setSaving(true);
     setError('');
     try {
       const payload: ProviderKeyConfig = {
         apiKey: form.apiKey.trim(),
+        priority:
+          form.priority !== undefined && Number.isFinite(form.priority)
+            ? Math.trunc(form.priority)
+            : undefined,
         prefix: form.prefix?.trim() || undefined,
         baseUrl,
         proxyUrl: form.proxyUrl?.trim() || undefined,
@@ -165,6 +258,7 @@ export function AiProvidersVertexEditPage() {
             return { name, alias };
           })
           .filter(Boolean) as ProviderKeyConfig['models'],
+        excludedModels: parseExcludedModels(form.excludedText),
       };
 
       const nextList =
@@ -179,6 +273,8 @@ export function AiProvidersVertexEditPage() {
         editIndex !== null ? t('notification.vertex_config_updated') : t('notification.vertex_config_added'),
         'success'
       );
+      allowNextNavigation();
+      setBaseline(buildVertexBaseline(form));
       handleBack();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : '';
@@ -188,6 +284,7 @@ export function AiProvidersVertexEditPage() {
       setSaving(false);
     }
   }, [
+    allowNextNavigation,
     canSave,
     clearCache,
     configs,
@@ -207,10 +304,28 @@ export function AiProvidersVertexEditPage() {
       onBack={handleBack}
       backLabel={t('common.back')}
       backAriaLabel={t('common.back')}
-      rightAction={
-        <Button size="sm" onClick={handleSave} loading={saving} disabled={!canSave}>
-          {t('common.save')}
-        </Button>
+      hideTopBarBackButton
+      hideTopBarRightAction
+      floatingAction={
+        <div className={layoutStyles.floatingActions}>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleBack}
+            className={layoutStyles.floatingBackButton}
+          >
+            {t('common.back')}
+          </Button>
+          <Button
+            size="sm"
+            onClick={handleSave}
+            loading={saving}
+            disabled={!canSave}
+            className={layoutStyles.floatingSaveButton}
+          >
+            {t('common.save')}
+          </Button>
+        </div>
       }
       isLoading={loading}
       loadingLabel={t('common.loading')}
@@ -218,7 +333,7 @@ export function AiProvidersVertexEditPage() {
       <Card>
         {error && <div className="error-box">{error}</div>}
         {invalidIndexParam || invalidIndex ? (
-          <div className="hint">Invalid provider index.</div>
+          <div className="hint">{t('common.invalid_provider_index')}</div>
         ) : (
           <>
             <Input
@@ -256,6 +371,8 @@ export function AiProvidersVertexEditPage() {
               addLabel={t('common.custom_headers_add')}
               keyPlaceholder={t('common.custom_headers_key_placeholder')}
               valuePlaceholder={t('common.custom_headers_value_placeholder')}
+              removeButtonTitle={t('common.delete')}
+              removeButtonAriaLabel={t('common.delete')}
               disabled={disableControls || saving}
             />
             <div className="form-group">
@@ -266,9 +383,22 @@ export function AiProvidersVertexEditPage() {
                 addLabel={t('ai_providers.vertex_models_add_btn')}
                 namePlaceholder={t('common.model_name_placeholder')}
                 aliasPlaceholder={t('common.model_alias_placeholder')}
+                removeButtonTitle={t('common.delete')}
+                removeButtonAriaLabel={t('common.delete')}
                 disabled={disableControls || saving}
               />
-              <div className="hint">{t('ai_providers.vertex_models_hint')}</div>
+            </div>
+            <div className="form-group">
+              <label>{t('ai_providers.excluded_models_label')}</label>
+              <textarea
+                className="input"
+                placeholder={t('ai_providers.excluded_models_placeholder')}
+                value={form.excludedText}
+                onChange={(e) => setForm((prev) => ({ ...prev, excludedText: e.target.value }))}
+                rows={4}
+                disabled={disableControls || saving}
+              />
+              <div className="hint">{t('ai_providers.excluded_models_hint')}</div>
             </div>
           </>
         )}

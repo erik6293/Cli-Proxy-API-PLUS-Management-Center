@@ -1,4 +1,24 @@
 export type PayloadParamValueType = 'string' | 'number' | 'boolean' | 'json';
+export type PayloadParamValidationErrorCode =
+  | 'payload_invalid_number'
+  | 'payload_invalid_boolean'
+  | 'payload_invalid_json';
+
+export type VisualConfigFieldPath =
+  | 'port'
+  | 'logsMaxTotalSizeMb'
+  | 'requestRetry'
+  | 'maxRetryCredentials'
+  | 'maxRetryInterval'
+  | 'streaming.keepaliveSeconds'
+  | 'streaming.bootstrapRetries'
+  | 'streaming.nonstreamKeepaliveInterval';
+
+export type VisualConfigValidationErrorCode = 'port_range' | 'non_negative_integer';
+
+export type VisualConfigValidationErrors = Partial<
+  Record<VisualConfigFieldPath, VisualConfigValidationErrorCode>
+>;
 
 export type PayloadParamEntry = {
   id: string;
@@ -10,7 +30,7 @@ export type PayloadParamEntry = {
 export type PayloadModelEntry = {
   id: string;
   name: string;
-  protocol?: 'openai' | 'openai-response' | 'gemini' | 'claude' | 'codex' | 'antigravity';
+  protocol?: string;
 };
 
 export type PayloadRule = {
@@ -51,13 +71,16 @@ export type VisualConfigValues = {
   proxyUrl: string;
   forceModelPrefix: boolean;
   requestRetry: string;
+  maxRetryCredentials: string;
   maxRetryInterval: string;
   quotaSwitchProject: boolean;
   quotaSwitchPreviewModel: boolean;
   routingStrategy: 'round-robin' | 'fill-first';
   wsAuth: boolean;
   payloadDefaultRules: PayloadRule[];
+  payloadDefaultRawRules: PayloadRule[];
   payloadOverrideRules: PayloadRule[];
+  payloadOverrideRawRules: PayloadRule[];
   payloadFilterRules: PayloadFilterRule[];
   streaming: StreamingConfig;
 };
@@ -87,13 +110,16 @@ export const DEFAULT_VISUAL_VALUES: VisualConfigValues = {
   proxyUrl: '',
   forceModelPrefix: false,
   requestRetry: '',
+  maxRetryCredentials: '',
   maxRetryInterval: '',
   quotaSwitchProject: true,
   quotaSwitchPreviewModel: true,
   routingStrategy: 'round-robin',
   wsAuth: false,
   payloadDefaultRules: [],
+  payloadDefaultRawRules: [],
   payloadOverrideRules: [],
+  payloadOverrideRawRules: [],
   payloadFilterRules: [],
   streaming: {
     keepaliveSeconds: '',
