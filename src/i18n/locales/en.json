@@ -647,7 +647,8 @@
     "plan_pro": "Pro",
     "plan_max": "Max",
     "plan_max5": "Max 5x",
-    "plan_max20": "Max 20x"
+    "plan_max20": "Max 20x",
+    "plan_team": "Team"
   },
   "codex_quota": {
     "title": "Codex Quota",
@@ -1272,8 +1273,10 @@
           "routing_strategy_hint": "Select credential selection strategy",
           "strategy_round_robin": "Round Robin",
           "strategy_fill_first": "Fill First",
+          "session_affinity_ttl": "Session Affinity TTL",
           "force_model_prefix": "Force Model Prefix",
           "force_model_prefix_desc": "Unprefixed model requests only use credentials without prefix",
+          "session_affinity": "Session Affinity Routing",
           "ws_auth": "WebSocket Authentication",
           "ws_auth_desc": "Enable WebSocket authentication (/v1/ws)"
         },
