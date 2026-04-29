@@ -1,25 +1,32 @@
 import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Line } from 'react-chartjs-2';
+import type { ChartData, ChartOptions, TooltipItem } from 'chart.js';
+import { Bar } from 'react-chartjs-2';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import {
   buildHourlyTokenBreakdown,
   buildDailyTokenBreakdown,
-  type TokenCategory
+  type TokenCategory,
 } from '@/utils/usage';
 import { buildChartOptions, getHourChartMinWidth } from '@/utils/usage/chartConfig';
 import type { UsagePayload } from './hooks/useUsageData';
 import styles from '@/pages/UsagePage.module.scss';
 
-const TOKEN_COLORS: Record<TokenCategory, { border: string; bg: string }> = {
-  input: { border: '#8b8680', bg: 'rgba(139, 134, 128, 0.25)' },
-  output: { border: '#22c55e', bg: 'rgba(34, 197, 94, 0.25)' },
-  cached: { border: '#f59e0b', bg: 'rgba(245, 158, 11, 0.25)' },
-  reasoning: { border: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.25)' }
+const TOKEN_COLORS: Record<TokenCategory, string> = {
+  input: '#8CC21F',
+  output: '#FA6450',
+  cached: '#F5ED58',
+  reasoning: '#00ABA5',
 };
 
 const CATEGORIES: TokenCategory[] = ['input', 'output', 'cached', 'reasoning'];
+
+function formatTokens(num: number): string {
+  if (num >= 1e6) return (num / 1e6).toFixed(2) + 'M';
+  if (num >= 1e3) return (num / 1e3).toFixed(2) + 'K';
+  return num.toString();
+}
 
 export interface TokenBreakdownChartProps {
   usage: UsagePayload | null;
@@ -34,7 +41,7 @@ export function TokenBreakdownChart({
   loading,
   isDark,
   isMobile,
-  hourWindowHours
+  hourWindowHours,
 }: TokenBreakdownChartProps) {
   const { t } = useTranslation();
   const [period, setPeriod] = useState<'hour' | 'day'>('hour');
@@ -48,41 +55,72 @@ export function TokenBreakdownChart({
       input: t('usage_stats.input_tokens'),
       output: t('usage_stats.output_tokens'),
       cached: t('usage_stats.cached_tokens'),
-      reasoning: t('usage_stats.reasoning_tokens')
+      reasoning: t('usage_stats.reasoning_tokens'),
     };
 
-    const data = {
+    const data: ChartData<'bar'> = {
       labels: series.labels,
       datasets: CATEGORIES.map((cat) => ({
         label: categoryLabels[cat],
         data: series.dataByCategory[cat],
-        borderColor: TOKEN_COLORS[cat].border,
-        backgroundColor: TOKEN_COLORS[cat].bg,
-        pointBackgroundColor: TOKEN_COLORS[cat].border,
-        pointBorderColor: TOKEN_COLORS[cat].border,
-        fill: true,
-        tension: 0.35
-      }))
+        backgroundColor: TOKEN_COLORS[cat],
+        borderColor: isDark ? '#0f172a' : '#ffffff',
+        borderWidth: 1,
+        borderSkipped: false,
+        grouped: true,
+        categoryPercentage: 0.82,
+        barPercentage: 0.88,
+      })),
     };
 
-    const baseOptions = buildChartOptions({ period, labels: series.labels, isDark, isMobile });
-    const options = {
+    const baseOptions = buildChartOptions({
+      period,
+      labels: series.labels,
+      isDark,
+      isMobile,
+    }) as ChartOptions<'bar'>;
+    const options: ChartOptions<'bar'> = {
       ...baseOptions,
       scales: {
         ...baseOptions.scales,
         y: {
           ...baseOptions.scales?.y,
-          stacked: true
+          stacked: false,
         },
         x: {
           ...baseOptions.scales?.x,
-          stacked: true
-        }
-      }
+          stacked: false,
+        },
+      },
+      plugins: {
+        ...baseOptions.plugins,
+        tooltip: {
+          ...baseOptions.plugins?.tooltip,
+          itemSort: (a, b) => a.datasetIndex - b.datasetIndex,
+          callbacks: {
+            ...baseOptions.plugins?.tooltip?.callbacks,
+            label: function (context: TooltipItem<'bar'>) {
+              const val = Number(context.raw) || 0;
+              const cat = CATEGORIES[context.datasetIndex];
+              let text = `${context.dataset.label}: ${formatTokens(val)}`;
+
+              if (cat === 'cached') {
+                const inputVal = Number(series.dataByCategory.input[context.dataIndex]) || 0;
+                if (inputVal > 0) {
+                  const perc = ((val / inputVal) * 100).toFixed(2);
+                  text += ` (${perc}%)`;
+                }
+              }
+              return text;
+            },
+          },
+        },
+      },
     };
 
     return { chartData: data, chartOptions: options };
   }, [usage, period, isDark, isMobile, hourWindowHours, t]);
+  const labels = chartData.labels ?? [];
 
   return (
     <Card
@@ -108,7 +146,7 @@ export function TokenBreakdownChart({
     >
       {loading ? (
         <div className={styles.hint}>{t('common.loading')}</div>
-      ) : chartData.labels.length > 0 ? (
+      ) : labels.length > 0 ? (
         <div className={styles.chartWrapper}>
           <div className={styles.chartLegend} aria-label="Chart legend">
             {chartData.datasets.map((dataset, index) => (
@@ -117,7 +155,10 @@ export function TokenBreakdownChart({
                 className={styles.legendItem}
                 title={dataset.label}
               >
-                <span className={styles.legendDot} style={{ backgroundColor: dataset.borderColor }} />
+                <span
+                  className={styles.legendDot}
+                  style={{ backgroundColor: TOKEN_COLORS[CATEGORIES[index]] }}
+                />
                 <span className={styles.legendLabel}>{dataset.label}</span>
               </div>
             ))}
@@ -128,11 +169,11 @@ export function TokenBreakdownChart({
                 className={styles.chartCanvas}
                 style={
                   period === 'hour'
-                    ? { minWidth: getHourChartMinWidth(chartData.labels.length, isMobile) }
+                    ? { minWidth: getHourChartMinWidth(labels.length, isMobile) }
                     : undefined
                 }
               >
-                <Line data={chartData} options={chartOptions} />
+                <Bar data={chartData} options={chartOptions} />
               </div>
             </div>
           </div>

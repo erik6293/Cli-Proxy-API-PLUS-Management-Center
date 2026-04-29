@@ -117,7 +117,7 @@ export const DEFAULT_VISUAL_VALUES: VisualConfigValues = {
   maxRetryInterval: '',
   quotaSwitchProject: true,
   quotaSwitchPreviewModel: true,
-  quotaAntigravityCredits: true,
+  quotaAntigravityCredits: false,
   routingStrategy: 'round-robin',
   routingSessionAffinity: false,
   routingSessionAffinityTTL: '',

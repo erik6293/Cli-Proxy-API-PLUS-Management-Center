@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Chart as ChartJS,
+  BarElement,
   CategoryScale,
   LinearScale,
   PointElement,
@@ -9,7 +10,7 @@ import {
   Title,
   Tooltip,
   Legend,
-  Filler
+  Filler,
 } from 'chart.js';
 import { Button } from '@/components/ui/Button';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
@@ -33,19 +34,20 @@ import {
   ServiceHealthCard,
   useUsageData,
   useSparklines,
-  useChartData
+  useChartData,
 } from '@/components/usage';
 import {
   getModelNamesFromUsage,
   getApiStats,
   getModelStats,
   filterUsageByTimeRange,
-  type UsageTimeRange
+  type UsageTimeRange,
 } from '@/utils/usage';
 import styles from './UsagePage.module.scss';
 
 // Register Chart.js components
 ChartJS.register(
+  BarElement,
   CategoryScale,
   LinearScale,
   PointElement,
@@ -70,7 +72,7 @@ const TIME_RANGE_OPTIONS: ReadonlyArray<{ value: UsageTimeRange; labelKey: strin
 const HOUR_WINDOW_BY_TIME_RANGE: Record<Exclude<UsageTimeRange, 'all'>, number> = {
   '7h': 7,
   '24h': 24,
-  '7d': 7 * 24
+  '7d': 7 * 24,
 };
 
 const isUsageTimeRange = (value: unknown): value is UsageTimeRange =>
@@ -143,7 +145,7 @@ export function UsagePage() {
     handleImportChange,
     importInputRef,
     exporting,
-    importing
+    importing,
   } = useUsageData();
 
   useHeaderRefresh(loadUsage);
@@ -176,13 +178,13 @@ export function UsagePage() {
   const openaiProvidersForUsage =
     openaiProviderState && openaiProviderState.source === openaiCompatibilityConfig
       ? openaiProviderState.providers
-      : openaiCompatibilityConfig ?? [];
+      : (openaiCompatibilityConfig ?? []);
 
   const timeRangeOptions = useMemo(
     () =>
       TIME_RANGE_OPTIONS.map((opt) => ({
         value: opt.value,
-        label: t(opt.labelKey)
+        label: t(opt.labelKey),
       })),
     [t]
   );
@@ -191,8 +193,7 @@ export function UsagePage() {
     () => (usage ? filterUsageByTimeRange(usage, timeRange) : null),
     [usage, timeRange]
   );
-  const hourWindowHours =
-    timeRange === 'all' ? undefined : HOUR_WINDOW_BY_TIME_RANGE[timeRange];
+  const hourWindowHours = timeRange === 'all' ? undefined : HOUR_WINDOW_BY_TIME_RANGE[timeRange];
 
   const handleChartLinesChange = useCallback((lines: string[]) => {
     setChartLines(normalizeChartLines(lines));
@@ -223,13 +224,8 @@ export function UsagePage() {
   const nowMs = lastRefreshedAt?.getTime() ?? 0;
 
   // Sparklines hook
-  const {
-    requestsSparkline,
-    tokensSparkline,
-    rpmSparkline,
-    tpmSparkline,
-    costSparkline
-  } = useSparklines({ usage: filteredUsage, loading, nowMs });
+  const { requestsSparkline, tokensSparkline, rpmSparkline, tpmSparkline, costSparkline } =
+    useSparklines({ usage: filteredUsage, loading, nowMs });
 
   // Chart data hook
   const {
@@ -240,7 +236,7 @@ export function UsagePage() {
     requestsChartData,
     tokensChartData,
     requestsChartOptions,
-    tokensChartOptions
+    tokensChartOptions,
   } = useChartData({ usage: filteredUsage, chartLines, isDark, isMobile, hourWindowHours });
 
   // Derived data
@@ -334,7 +330,7 @@ export function UsagePage() {
           tokens: tokensSparkline,
           rpm: rpmSparkline,
           tpm: tpmSparkline,
-          cost: costSparkline
+          cost: costSparkline,
         }}
       />
 
